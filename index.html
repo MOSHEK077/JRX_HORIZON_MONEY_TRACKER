@@ -6,7 +6,7 @@
     <title>JRX · Horizon Finance Tracker | Live + Quotes + PDF Export</title>
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <!-- jsPDF and autoTable for PDF export -->
+    <!-- jsPDF and autoTable for PDF export (fixed integration) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/autoTable.min.js"></script>
     <!-- Font Awesome 6 -->
@@ -656,68 +656,86 @@
         document.getElementById('dateStr').innerText = dateStr;
         document.getElementById('timeStr').innerText = timeStr;
     }
-    // ======================= PDF EXPORT FUNCTION =======================
-    async function exportToPDF() {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-        
-        // Title and header
-        const userName = localStorage.getItem(STORAGE_USER_NAME) || "Moshek Shaju Jones J";
-        const currentDate = new Date().toLocaleString();
-        doc.setFontSize(20);
-        doc.setTextColor(59, 59, 255);
-        doc.text("JRX · Horizon Finance Tracker", 14, 20);
-        doc.setFontSize(11);
-        doc.setTextColor(100);
-        doc.text(`Report generated for: ${userName}`, 14, 30);
-        doc.text(`Date: ${currentDate}`, 14, 37);
-        
-        // Summary section
-        const { totalIncome, totalExpense, balance } = computeTotals();
-        doc.setFontSize(12);
-        doc.setTextColor(0);
-        doc.text(`SUMMARY`, 14, 48);
-        doc.setFontSize(10);
-        doc.text(`💰 Total Income: ₹${totalIncome.toFixed(2)}`, 14, 56);
-        doc.text(`💸 Total Expense: ₹${totalExpense.toFixed(2)}`, 70, 56);
-        doc.text(`⚖️ Net Balance: ₹${balance.toFixed(2)}`, 126, 56);
-        
-        // Prepare transaction data
-        const tableData = transactions.map(t => [
-            t.date,
-            t.title,
-            t.category,
-            t.type === 'income' ? 'Income' : 'Expense',
-            `₹${t.amount.toFixed(2)}`
-        ]);
-        
-        // Add table
-        autoTable(doc, {
-            startY: 65,
-            head: [['Date', 'Description', 'Category', 'Type', 'Amount']],
-            body: tableData,
-            theme: 'striped',
-            headStyles: { fillColor: [59, 59, 255], textColor: 255, fontStyle: 'bold' },
-            alternateRowStyles: { fillColor: [240, 244, 250] },
-            margin: { left: 14, right: 14 },
-            didDrawPage: (data) => {
-                // Footer
-                const pageCount = doc.internal.getNumberOfPages();
-                doc.setFontSize(8);
-                doc.setTextColor(150);
-                doc.text(`Page ${data.pageNumber} of ${pageCount}`, doc.internal.pageSize.getWidth() / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+    // ======================= PDF EXPORT FUNCTION (FIXED) =======================
+    function exportToPDF() {
+        try {
+            // Check if jsPDF is loaded
+            if (typeof window.jspdf === 'undefined') {
+                showToast("❌ PDF library not loaded. Please refresh.");
+                return;
             }
-        });
-        
-        // If no transactions, show a note
-        if(transactions.length === 0) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+            
+            // Title and header
+            const userName = localStorage.getItem(STORAGE_USER_NAME) || "Moshek Shaju Jones J";
+            const currentDate = new Date().toLocaleString();
+            doc.setFontSize(20);
+            doc.setTextColor(59, 59, 255);
+            doc.text("JRX · Horizon Finance Tracker", 14, 20);
+            doc.setFontSize(11);
+            doc.setTextColor(100);
+            doc.text(`Report generated for: ${userName}`, 14, 30);
+            doc.text(`Date: ${currentDate}`, 14, 37);
+            
+            // Summary section
+            const { totalIncome, totalExpense, balance } = computeTotals();
+            doc.setFontSize(12);
+            doc.setTextColor(0);
+            doc.text("FINANCIAL SUMMARY", 14, 48);
             doc.setFontSize(10);
-            doc.text("No transactions recorded yet.", 14, doc.lastAutoTable.finalY + 10);
+            doc.text(`💰 Total Income: ₹${totalIncome.toFixed(2)}`, 14, 56);
+            doc.text(`💸 Total Expense: ₹${totalExpense.toFixed(2)}`, 70, 56);
+            doc.text(`⚖️ Net Balance: ₹${balance.toFixed(2)}`, 126, 56);
+            
+            // Prepare transaction data
+            const tableData = transactions.map(t => [
+                t.date,
+                t.title,
+                t.category,
+                t.type === 'income' ? 'Income' : 'Expense',
+                `₹${t.amount.toFixed(2)}`
+            ]);
+            
+            // Add table using doc.autoTable (proper method)
+            if (typeof doc.autoTable !== 'function') {
+                showToast("⚠️ AutoTable plugin not ready. Trying fallback...");
+                // fallback: save simple PDF without table
+                doc.setFontSize(12);
+                doc.text("Transaction data could not be formatted.", 14, 80);
+                doc.save(`JRX_Transactions_${new Date().toISOString().slice(0,19)}.pdf`);
+                return;
+            }
+            
+            doc.autoTable({
+                startY: 65,
+                head: [['Date', 'Description', 'Category', 'Type', 'Amount']],
+                body: tableData.length ? tableData : [['No transactions', '', '', '', '']],
+                theme: 'striped',
+                headStyles: { fillColor: [59, 59, 255], textColor: 255, fontStyle: 'bold' },
+                alternateRowStyles: { fillColor: [240, 244, 250] },
+                margin: { left: 14, right: 14 },
+                didDrawPage: (data) => {
+                    const pageCount = doc.internal.getNumberOfPages();
+                    doc.setFontSize(8);
+                    doc.setTextColor(150);
+                    doc.text(`Page ${data.pageNumber} of ${pageCount}`, doc.internal.pageSize.getWidth() / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+                }
+            });
+            
+            // If no transactions, add a note under table
+            if (transactions.length === 0 && doc.lastAutoTable) {
+                doc.setFontSize(10);
+                doc.text("No transactions recorded yet. Start adding to see data.", 14, doc.lastAutoTable.finalY + 10);
+            }
+            
+            // Save PDF
+            doc.save(`JRX_Transactions_${new Date().toISOString().slice(0,19)}.pdf`);
+            showToast("📄 PDF exported successfully!");
+        } catch (error) {
+            console.error("PDF export error:", error);
+            showToast("❌ PDF generation failed. Check console for details.");
         }
-        
-        // Save PDF
-        doc.save(`JRX_Transactions_${new Date().toISOString().slice(0,19)}.pdf`);
-        showToast("📄 PDF exported successfully!");
     }
     // ======================= THEME =======================
     function toggleTheme() {
